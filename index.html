@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Halle – Interaktiver Lageplan (Editor)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Mona+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f6f8;
+    --panel:#ffffff;
+    --panel2:#f7f8fa;
+    --line:#e3e7eb;
+    --ink:#1c2530;
+    --sub:#75818c;
+    --accent:#ff7a33;
+    --good:#22a25f;
+    --bad:#e2443a;
+
+    --c-buero:#3b7ce0;
+    --c-sozial:#22a25f;
+    --c-werkstatt:#ff7a33;
+    --c-lackier:#e2443a;
+    --c-technik:#8b95a1;
+    --c-lager:#9a6bd6;
+    --c-sanitaer:#0fa3a3;
+    --c-tor:#d6a917;
+    --c-sonstiges:#e0518c;
+
+    --shadow:0 1px 2px rgba(20,30,40,.04), 0 8px 24px rgba(20,30,40,.06);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Mona Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    padding:20px 20px 60px;
+  }
+
+  header{ max-width:1500px; margin:0 auto 16px; }
+  .eyebrow{
+    font-family:'Mona Sans', sans-serif;
+    font-weight:700; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--accent); font-size:12px;
+  }
+  h1{
+    font-family:'Mona Sans', sans-serif; font-weight:800;
+    font-size:clamp(22px,3vw,34px); margin:4px 0 6px; letter-spacing:-.01em;
+  }
+  header p{ color:var(--sub); font-size:13.5px; max-width:760px; line-height:1.55; margin:0; }
+
+  .topbar{
+    max-width:1500px; margin:0 auto 14px;
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:12px 14px; box-shadow:var(--shadow);
+  }
+  button, .filebtn{
+    font-family:'Mona Sans', sans-serif; font-size:13px; font-weight:600;
+    letter-spacing:.01em; color:var(--ink);
+    background:#fff; border:1px solid var(--line); border-radius:8px;
+    padding:9px 14px; cursor:pointer; transition:.15s ease;
+  }
+  button:hover, .filebtn:hover{ border-color:var(--accent); color:var(--accent); }
+  #btnToggleEdit.active{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  #btnToggleEdit.active:hover{ color:#fff; }
+  button.danger:hover{ border-color:var(--bad); }
+  .filebtn{ position:relative; overflow:hidden; display:inline-flex; align-items:center; gap:6px; }
+  .filebtn input[type=file]{ position:absolute; inset:0; opacity:0; cursor:pointer; }
+
+  .spacer{ flex:1; }
+  .savestatus{ font-size:11.5px; color:var(--sub); display:flex; align-items:center; gap:6px; }
+  .dot{ width:7px; height:7px; border-radius:50%; background:var(--good); box-shadow:0 0 6px var(--good); }
+  .dot.stale{ background:#f2cf4a; box-shadow:0 0 6px #f2cf4a; }
+
+  .wrap{
+    max-width:1500px; margin:0 auto;
+    display:grid; grid-template-columns:1fr 320px; gap:16px;
+    align-items:start;
+  }
+  @media (max-width:1050px){ .wrap{ grid-template-columns:1fr; } }
+
+  .stage{
+    position:relative; background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:10px; overflow:auto; box-shadow:var(--shadow);
+  }
+  .imgbox{ position:relative; display:inline-block; user-select:none; }
+  .imgbox img{ display:block; max-width:100%; height:auto; border-radius:6px; }
+
+  .room{
+    position:absolute; box-sizing:border-box;
+  }
+  .room .fill{
+    position:absolute; inset:0; border-radius:3px;
+    background:transparent; border:0 solid transparent;
+    transition:background .12s ease, border-color .12s ease;
+  }
+  body.editmode .room .fill{
+    border:1.5px dashed var(--roomcolor,#fff);
+    background:color-mix(in srgb, var(--roomcolor,#fff) 12%, transparent);
+    cursor:move;
+  }
+  body.editmode .room.selected .fill{
+    border:2px solid var(--roomcolor,#fff);
+    background:color-mix(in srgb, var(--roomcolor,#fff) 22%, transparent);
+  }
+  body:not(.editmode) .room:hover .fill{
+    background:color-mix(in srgb, var(--roomcolor,#fff) 30%, transparent);
+    border:1px solid color-mix(in srgb, var(--roomcolor,#fff) 70%, transparent);
+  }
+  .handle{
+    position:absolute; width:11px; height:11px; background:#fff; border:1.5px solid var(--roomcolor,#333);
+    border-radius:2px; z-index:5; display:none; box-shadow:0 1px 3px rgba(20,30,40,.25);
+  }
+  body.editmode .room.selected .handle{ display:block; }
+  .handle.nw{ left:-6px; top:-6px; cursor:nwse-resize; }
+  .handle.ne{ right:-6px; top:-6px; cursor:nesw-resize; }
+  .handle.sw{ left:-6px; bottom:-6px; cursor:nesw-resize; }
+  .handle.se{ right:-6px; bottom:-6px; cursor:nwse-resize; }
+
+  .drawbox{
+    position:absolute; border:2px dashed var(--accent);
+    background:rgba(255,122,51,.15); pointer-events:none; z-index:20;
+  }
+
+  .tooltip{
+    position:absolute; z-index:50; pointer-events:none;
+    background:#ffffff; border:1px solid var(--line); border-radius:10px;
+    padding:10px 13px; max-width:260px; font-size:13px; line-height:1.5;
+    box-shadow:0 10px 30px rgba(20,30,40,.16); opacity:0; transform:translateY(4px);
+    transition:opacity .12s ease, transform .12s ease;
+  }
+  .tooltip.show{ opacity:1; transform:translateY(0); }
+  .tooltip h4{ margin:0 0 4px; font-family:'Mona Sans',sans-serif; font-weight:700; font-size:14.5px; letter-spacing:0; color:var(--ink); }
+  .tooltip p{ margin:0; color:var(--sub); white-space:pre-wrap; }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:16px; position:sticky; top:20px; max-height:calc(100vh - 40px); overflow:auto;
+    box-shadow:var(--shadow);
+  }
+  .panel h3{
+    font-family:'Mona Sans', sans-serif; font-weight:700; font-size:14.5px; margin:0 0 10px;
+    letter-spacing:.06em; color:var(--accent); text-transform:uppercase;
+  }
+  .empty{ color:var(--sub); font-size:12.5px; line-height:1.5; }
+
+  .field{ margin-bottom:10px; }
+  .field label{ display:block; font-size:11px; color:var(--sub); margin-bottom:4px; letter-spacing:.03em; text-transform:uppercase; }
+  .field input[type=text], .field textarea, .field select, .field input[type=number]{
+    width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--ink);
+    border-radius:7px; padding:8px 9px; font-family:'Mona Sans',sans-serif; font-size:13px;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus{
+    outline:none; border-color:var(--accent); background:#fff;
+  }
+  .field textarea{ resize:vertical; min-height:64px; }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .row4{ display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:6px; }
+
+  .roomlist{ list-style:none; margin:14px 0 0; padding:0; border-top:1px solid var(--line); padding-top:12px; }
+  .roomlist li{
+    display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:8px;
+    cursor:pointer; font-size:12.5px; margin-bottom:3px; border:1px solid transparent;
+  }
+  .roomlist li:hover{ background:var(--panel2); }
+  .roomlist li.active{ border-color:var(--accent); background:var(--panel2); }
+  .swatch{ width:10px; height:10px; border-radius:3px; flex:none; }
+  .roomlist li .rn{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .roomlist li .rm{ color:var(--sub); background:none; border:0; padding:2px 5px; cursor:pointer; }
+  .roomlist li .rm:hover{ color:var(--bad); }
+
+  .banner{
+    max-width:1500px; margin:0 auto 12px; padding:10px 14px; border-radius:10px;
+    font-size:12.5px; line-height:1.5; border:1px solid var(--line);
+  }
+  .banner.info{ background:#eaf3fc; color:#245a8c; border-color:#c9e0f5; }
+  .banner.warn{ background:#fdf3e0; color:#8a5a10; border-color:#f2d9a8; }
+
+  .legend{ display:flex; flex-wrap:wrap; gap:8px 14px; font-size:11.5px; color:var(--sub); margin-top:10px; }
+  .legend span{ display:inline-flex; align-items:center; gap:5px; }
+  .legend i{ width:9px; height:9px; border-radius:2px; display:inline-block; }
+
+  .hint{ font-size:11.5px; color:var(--sub); line-height:1.5; margin-top:10px; border-top:1px solid var(--line); padding-top:10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">3C · Halle</div>
+  <h1>Interaktiver Lageplan — Editor</h1>
+  <p>Boxen zeichnen, benennen, verschieben. Alles wird automatisch im Browser gespeichert (Auto-Save) — zusätzlich solltest du regelmäßig „Als JSON exportieren" klicken, das ist deine echte Sicherung.</p>
+</header>
+
+<div id="banner"></div>
+
+<div class="topbar">
+  <button id="btnToggleEdit">✏️ Bearbeiten: AUS</button>
+  <button id="btnExport">⬇️ Als JSON exportieren</button>
+  <label class="filebtn">📂 JSON importieren
+    <input type="file" id="fileImport" accept="application/json,.json">
+  </label>
+  <button id="btnClear" class="danger">🗑️ Alles löschen</button>
+  <div class="spacer"></div>
+  <div class="savestatus"><span class="dot" id="saveDot"></span><span id="saveText">Noch nicht gespeichert</span></div>
+</div>
+
+<div class="wrap">
+  <div class="stage">
+    <div class="imgbox" id="imgbox">
+      <img id="planImg" src="assets/halle.png" alt="Halle Lageplan" draggable="false">
+      <div id="roomsLayer"></div>
+      <div class="drawbox" id="drawbox" style="display:none;"></div>
+      <div id="tooltip" class="tooltip"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3 id="panelTitle">Räume</h3>
+    <div id="editorForm"></div>
+    <ul class="roomlist" id="roomList"></ul>
+    <div class="legend" id="legend"></div>
+    <div class="hint">
+      Ziehen im Plan (bei „Bearbeiten: AN") zeichnet eine neue Box. Anklicken einer Box wählt sie aus — Eckpunkte zum Skalieren, Fläche zum Verschieben ziehen. Zahlen rechts ermöglichen exakte Positionierung in %.
+    </div>
+  </div>
+</div>
+
+
+<script>
+const STORAGE_KEY = 'halle_lageplan_rooms_v1';
+const CATS = [
+  {id:'buero', label:'Büro', color:'var(--c-buero)'},
+  {id:'sozial', label:'Sozial / Pause', color:'var(--c-sozial)'},
+  {id:'werkstatt', label:'Werkstatt', color:'var(--c-werkstatt)'},
+  {id:'lackier', label:'Lackierzone', color:'var(--c-lackier)'},
+  {id:'technik', label:'Technik', color:'var(--c-technik)'},
+  {id:'lager', label:'Lager', color:'var(--c-lager)'},
+  {id:'sanitaer', label:'Sanitär', color:'var(--c-sanitaer)'},
+  {id:'tor', label:'Tor / Einfahrt', color:'var(--c-tor)'},
+  {id:'sonstiges', label:'Sonstiges', color:'var(--c-sonstiges)'},
+];
+function catColor(id){ const c = CATS.find(c=>c.id===id); return c ? c.color : '#fff'; }
+function catLabel(id){ const c = CATS.find(c=>c.id===id); return c ? c.label : id; }
+
+let ROOMS = [];
+let selectedId = null;
+let editMode = false;
+let uidCounter = 1;
+function newId(){ return 'r'+(uidCounter++)+'_'+Date.now().toString(36); }
+
+const imgbox = document.getElementById('imgbox');
+const roomsLayer = document.getElementById('roomsLayer');
+const drawbox = document.getElementById('drawbox');
+const tooltip = document.getElementById('tooltip');
+const roomList = document.getElementById('roomList');
+const editorForm = document.getElementById('editorForm');
+const panelTitle = document.getElementById('panelTitle');
+const legendEl = document.getElementById('legend');
+const bannerEl = document.getElementById('banner');
+const saveDot = document.getElementById('saveDot');
+const saveText = document.getElementById('saveText');
+
+function buildLegend(){
+  legendEl.innerHTML = CATS.map(c=>`<span><i style="background:${c.color}"></i>${c.label}</span>`).join('');
+}
+buildLegend();
+
+// ---------- persistence ----------
+let saveTimer = null;
+function scheduleSave(){
+  saveDot.classList.add('stale');
+  saveText.textContent = 'Speichere…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(doSave, 250);
+}
+function doSave(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ROOMS));
+    saveDot.classList.remove('stale');
+    const t = new Date();
+    saveText.textContent = 'Gespeichert (Browser) ' + t.toLocaleTimeString();
+  }catch(e){
+    saveDot.classList.remove('stale');
+    saveDot.style.background = 'var(--bad)';
+    saveText.textContent = 'Fehler beim Speichern: ' + e.message;
+  }
+}
+function loadFromStorage(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(Array.isArray(parsed) && parsed.length){
+        ROOMS = parsed;
+        showBanner('info', `${ROOMS.length} Raum/Räume aus dem Browser-Speicher geladen (letzter Stand dieses Geräts). Nicht vergessen: für eine echte Sicherung regelmäßig als JSON exportieren.`);
+        return;
+      }
+    }
+  }catch(e){}
+  showBanner('info', 'Keine gespeicherten Räume gefunden. Aktiviere „Bearbeiten" und zieh eine Box auf den Plan, um zu starten.');
+}
+function showBanner(type, msg){
+  bannerEl.innerHTML = `<div class="banner ${type}" style="max-width:1500px;margin:0 auto 12px;">${msg}</div>`;
+}
+
+// ---------- rendering ----------
+function render(){
+  document.body.classList.toggle('editmode', editMode);
+  roomsLayer.innerHTML = '';
+  ROOMS.forEach(r=>{
+    const el = document.createElement('div');
+    el.className = 'room' + (r.id===selectedId ? ' selected' : '');
+    el.style.left = r.left+'%'; el.style.top = r.top+'%';
+    el.style.width = r.w+'%'; el.style.height = r.h+'%';
+    el.style.setProperty('--roomcolor', catColor(r.cat));
+    el.dataset.id = r.id;
+
+    const fill = document.createElement('div');
+    fill.className = 'fill';
+    el.appendChild(fill);
+
+    ['nw','ne','sw','se'].forEach(pos=>{
+      const h = document.createElement('div');
+      h.className = 'handle '+pos;
+      h.dataset.handle = pos;
+      el.appendChild(h);
+    });
+
+    el.addEventListener('mousedown', onRoomMouseDown);
+    el.addEventListener('mouseenter', ()=> onHoverRoom(r, el, true));
+    el.addEventListener('mousemove', (e)=> positionTooltip(e));
+    el.addEventListener('mouseleave', ()=> onHoverRoom(r, el, false));
+    el.addEventListener('click', (e)=>{ if(editMode){ e.stopPropagation(); selectRoom(r.id); } });
+
+    roomsLayer.appendChild(el);
+  });
+  renderRoomList();
+  renderEditorForm();
+}
+
+function onHoverRoom(r, el, entering){
+  if(editMode) return;
+  if(entering){
+    tooltip.innerHTML = `<h4>${escapeHtml(r.name||'Unbenannt')}</h4>${r.description ? '<p>'+escapeHtml(r.description)+'</p>' : ''}`;
+    tooltip.classList.add('show');
+  } else {
+    tooltip.classList.remove('show');
+  }
+}
+function positionTooltip(e){
+  if(editMode) return;
+  const stageRect = imgbox.getBoundingClientRect();
+  tooltip.style.left = (e.clientX - stageRect.left + 16) + 'px';
+  tooltip.style.top = (e.clientY - stageRect.top + 12) + 'px';
+}
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function renderRoomList(){
+  if(!ROOMS.length){
+    roomList.innerHTML = '';
+    panelTitle.textContent = 'Räume (0)';
+    return;
+  }
+  panelTitle.textContent = `Räume (${ROOMS.length})`;
+  roomList.innerHTML = ROOMS.map(r=>`
+    <li class="${r.id===selectedId?'active':''}" data-id="${r.id}">
+      <span class="swatch" style="background:${catColor(r.cat)}"></span>
+      <span class="rn">${escapeHtml(r.name || 'Unbenannt')}</span>
+      <button class="rm" data-del="${r.id}" title="Löschen">✕</button>
+    </li>`).join('');
+  roomList.querySelectorAll('li').forEach(li=>{
+    li.addEventListener('click', (e)=>{
+      if(e.target.dataset.del) return;
+      selectRoom(li.dataset.id);
+    });
+  });
+  roomList.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      deleteRoom(btn.dataset.del);
+    });
+  });
+}
+
+function renderEditorForm(){
+  const r = ROOMS.find(x=>x.id===selectedId);
+  if(!editMode){
+    editorForm.innerHTML = ROOMS.length ? '<p class="empty">Klicke „Bearbeiten: AN", um Boxen zu erstellen oder zu ändern.</p>' : '<p class="empty">Noch keine Räume vorhanden.</p>';
+    return;
+  }
+  if(!r){
+    editorForm.innerHTML = '<p class="empty">Ziehe eine neue Box auf den Plan, oder wähle einen Raum aus der Liste unten aus.</p>';
+    return;
+  }
+  editorForm.innerHTML = `
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="f_name" value="${escapeHtml(r.name)}" placeholder="z. B. Meister-Büro">
+    </div>
+    <div class="field">
+      <label>Beschreibung</label>
+      <textarea id="f_desc" placeholder="z. B. 22,13 qm, ca. 5,9 x 3,75 m">${escapeHtml(r.description)}</textarea>
+    </div>
+    <div class="field">
+      <label>Kategorie</label>
+      <select id="f_cat">
+        ${CATS.map(c=>`<option value="${c.id}" ${c.id===r.cat?'selected':''}>${c.label}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Position &amp; Größe (%)</label>
+      <div class="row4">
+        <input type="number" step="0.1" id="f_left" value="${r.left.toFixed(2)}" title="Links %">
+        <input type="number" step="0.1" id="f_top" value="${r.top.toFixed(2)}" title="Oben %">
+        <input type="number" step="0.1" id="f_w" value="${r.w.toFixed(2)}" title="Breite %">
+        <input type="number" step="0.1" id="f_h" value="${r.h.toFixed(2)}" title="Höhe %">
+      </div>
+    </div>
+    <button id="btnDeleteSel" class="danger" style="width:100%;margin-top:4px;">🗑️ Diesen Raum löschen</button>
+  `;
+  document.getElementById('f_name').addEventListener('input', e=>{ r.name = e.target.value; renderRoomList(); scheduleSave(); });
+  document.getElementById('f_desc').addEventListener('input', e=>{ r.description = e.target.value; scheduleSave(); });
+  document.getElementById('f_cat').addEventListener('change', e=>{ r.cat = e.target.value; render(); scheduleSave(); });
+  ['left','top','w','h'].forEach(k=>{
+    document.getElementById('f_'+k).addEventListener('input', e=>{
+      const v = parseFloat(e.target.value);
+      if(!isNaN(v)){ r[k] = v; render(); scheduleSave(); }
+    });
+  });
+  document.getElementById('btnDeleteSel').addEventListener('click', ()=> deleteRoom(r.id));
+}
+
+function selectRoom(id){
+  selectedId = id;
+  render();
+}
+function deleteRoom(id){
+  ROOMS = ROOMS.filter(r=>r.id!==id);
+  if(selectedId===id) selectedId = null;
+  render();
+  scheduleSave();
+}
+
+// ---------- drawing new boxes ----------
+let drawing = false, drawStart = null;
+
+imgbox.addEventListener('mousedown', (e)=>{
+  if(!editMode) return;
+  if(e.target.closest('.room')) return; // handled elsewhere
+  const rect = imgbox.getBoundingClientRect();
+  drawing = true;
+  drawStart = {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
+  };
+  drawbox.style.display = 'block';
+  drawbox.style.left = drawStart.x+'px';
+  drawbox.style.top = drawStart.y+'px';
+  drawbox.style.width = '0px';
+  drawbox.style.height = '0px';
+  selectedId = null;
+  render();
+});
+
+window.addEventListener('mousemove', (e)=>{
+  if(drawing){
+    const rect = imgbox.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const left = Math.min(x, drawStart.x), top = Math.min(y, drawStart.y);
+    const w = Math.abs(x - drawStart.x), h = Math.abs(y - drawStart.y);
+    drawbox.style.left = left+'px'; drawbox.style.top = top+'px';
+    drawbox.style.width = w+'px'; drawbox.style.height = h+'px';
+  }
+});
+
+window.addEventListener('mouseup', (e)=>{
+  if(drawing){
+    drawing = false;
+    drawbox.style.display = 'none';
+    const rect = imgbox.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const left = Math.min(x, drawStart.x), top = Math.min(y, drawStart.y);
+    const w = Math.abs(x - drawStart.x), h = Math.abs(y - drawStart.y);
+    if(w > 8 && h > 8){
+      const pctLeft = left/rect.width*100, pctTop = top/rect.height*100;
+      const pctW = w/rect.width*100, pctH = h/rect.height*100;
+      const room = {
+        id:newId(), name:'Neuer Raum', description:'', cat:'sonstiges',
+        left:pctLeft, top:pctTop, w:pctW, h:pctH
+      };
+      ROOMS.push(room);
+      selectedId = room.id;
+      render();
+      scheduleSave();
+      setTimeout(()=>{ const f = document.getElementById('f_name'); if(f){ f.focus(); f.select(); } }, 30);
+    }
+  }
+});
+
+// ---------- moving / resizing existing boxes ----------
+let dragMode = null; // 'move' | 'nw' | 'ne' | 'sw' | 'se'
+let dragRoom = null;
+let dragStart = null;
+
+function onRoomMouseDown(e){
+  if(!editMode) return;
+  e.stopPropagation();
+  const el = e.currentTarget;
+  const id = el.dataset.id;
+  selectedId = id;
+  render();
+  const room = ROOMS.find(r=>r.id===id);
+  const handle = e.target.dataset.handle;
+  dragMode = handle || 'move';
+  dragRoom = room;
+  const rect = imgbox.getBoundingClientRect();
+  dragStart = {
+    mx:e.clientX, my:e.clientY,
+    left:room.left, top:room.top, w:room.w, h:room.h,
+    rectW:rect.width, rectH:rect.height
+  };
+  window.addEventListener('mousemove', onDragMove);
+  window.addEventListener('mouseup', onDragEnd);
+}
+
+function onDragMove(e){
+  if(!dragRoom) return;
+  const dx = (e.clientX - dragStart.mx) / dragStart.rectW * 100;
+  const dy = (e.clientY - dragStart.my) / dragStart.rectH * 100;
+  if(dragMode === 'move'){
+    dragRoom.left = clamp(dragStart.left + dx, 0, 100 - dragRoom.w);
+    dragRoom.top = clamp(dragStart.top + dy, 0, 100 - dragRoom.h);
+  } else {
+    let {left, top, w, h} = dragStart;
+    if(dragMode.includes('n')){ top = dragStart.top + dy; h = dragStart.h - dy; }
+    if(dragMode.includes('s')){ h = dragStart.h + dy; }
+    if(dragMode.includes('w')){ left = dragStart.left + dx; w = dragStart.w - dx; }
+    if(dragMode.includes('e')){ w = dragStart.w + dx; }
+    if(w > 1.5){ dragRoom.left = left; dragRoom.w = w; }
+    if(h > 1.5){ dragRoom.top = top; dragRoom.h = h; }
+  }
+  render();
+}
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+function onDragEnd(){
+  dragRoom = null; dragMode = null;
+  window.removeEventListener('mousemove', onDragMove);
+  window.removeEventListener('mouseup', onDragEnd);
+  scheduleSave();
+}
+
+// ---------- top controls ----------
+const btnToggleEdit = document.getElementById('btnToggleEdit');
+btnToggleEdit.addEventListener('click', ()=>{
+  editMode = !editMode;
+  btnToggleEdit.textContent = editMode ? '✏️ Bearbeiten: AN' : '✏️ Bearbeiten: AUS';
+  btnToggleEdit.classList.toggle('active', editMode);
+  if(!editMode) selectedId = null;
+  render();
+});
+
+document.getElementById('btnExport').addEventListener('click', ()=>{
+  try{
+    const data = JSON.stringify(ROOMS, null, 2);
+    const blob = new Blob([data], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'rooms.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 1500);
+    showBanner('info', `✅ ${ROOMS.length} Raum/Räume als "rooms.json" heruntergeladen. Deine Boxen bleiben hier im Editor unverändert erhalten.`);
+  }catch(e){
+    showBanner('warn', 'Export fehlgeschlagen: ' + e.message + ' — deine Daten sind trotzdem noch im Browser-Speicher vorhanden, nichts wurde gelöscht.');
+  }
+});
+
+document.getElementById('fileImport').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    try{
+      const parsed = JSON.parse(ev.target.result);
+      if(!Array.isArray(parsed)) throw new Error('Datei enthält kein gültiges Raum-Array.');
+      const ok = confirm(`${parsed.length} Raum/Räume aus der Datei laden? Das ersetzt die aktuell ${ROOMS.length} Räume im Editor (Browser-Speicher wird ebenfalls überschrieben).`);
+      if(ok){
+        ROOMS = parsed.map(r=>({
+          id: r.id || newId(),
+          name: r.name || '',
+          description: r.description || '',
+          cat: r.cat || 'sonstiges',
+          left: Number(r.left)||0, top: Number(r.top)||0,
+          w: Number(r.w)||5, h: Number(r.h)||5
+        }));
+        selectedId = null;
+        render();
+        scheduleSave();
+        showBanner('info', `✅ ${ROOMS.length} Raum/Räume importiert.`);
+      }
+    }catch(err){
+      showBanner('warn', 'Import fehlgeschlagen: ' + err.message);
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('btnClear').addEventListener('click', ()=>{
+  if(!ROOMS.length) return;
+  const ok = confirm(`Wirklich ALLE ${ROOMS.length} Räume löschen? Tipp: exportiere vorher als JSON, falls du sie noch brauchst.`);
+  if(ok){
+    ROOMS = [];
+    selectedId = null;
+    render();
+    scheduleSave();
+  }
+});
+
+// warn before accidental tab close if there are unsaved-to-file rooms
+window.addEventListener('beforeunload', (e)=>{
+  if(ROOMS.length){
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+// ---------- init ----------
+loadFromStorage();
+render();
+</script>
+</body>
+</html>
